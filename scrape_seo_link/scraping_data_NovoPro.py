@@ -1,4 +1,3 @@
-import os
 import time
 
 from selenium import webdriver
@@ -9,67 +8,47 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from bs4 import BeautifulSoup
 import pandas as pd
-from selenium.webdriver.common.action_chains import ActionChains
-# tải bằng requests
-import requests
 
-df = pd.read_excel("SEA_input.xlsx")
-code_smiles = df["Code SMILES"].dropna().tolist()
+df = pd.read_csv("NovoPro_input.csv")
 id_smiles = df["ID"].dropna().tolist()
 results = []
 
-print(code_smiles)
+print(id_smiles)
 
 driver = webdriver.Chrome()
 driver.maximize_window()
 
-actions = ActionChains(driver)
-
 try:
     # Mở trang web
-    driver.get('https://sea.bkslab.org/')
+    driver.get('https://www.novoprolabs.com/tools/convert-peptide-to-smiles-string')
     source = driver.page_source
     soup = BeautifulSoup(source, 'html.parser')
 
     # Chờ trang tải xong (sử dụng WebDriverWait)
     WebDriverWait(driver, 5).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, 'input[placeholder*="Paste SMILES or try the example below"]'))
+        EC.presence_of_element_located((By.XPATH, '//*[@id="input-sequence"]'))
     )
 
-    for code, sid in zip(code_smiles, id_smiles):
-        input_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'input[placeholder*="Paste SMILES"]'))
+    for sid in id_smiles:
+        # Tới input để clear nội dung và điền ID mới vào
+        input_field = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, '//*[@id="input-sequence"]'))
         )
         input_field.clear()
-        input_field.send_keys(code)
-        input_field.send_keys(Keys.RETURN)
-
+        input_field.send_keys(sid)
+        # Submit
+        driver.find_element(By.XPATH, '//*[@id="input-design-submit"]').send_keys(Keys.RETURN)
+        # Chờ và lấy kết quả
         WebDriverWait(driver, 20).until(
             EC.any_of(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'table.table-bordered')),
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'div.alert.alert-error'))
+                EC.presence_of_element_located((By.XPATH, '//*[@id="output-res"]/textarea'))
             )
         )
-
-        if driver.find_elements(By.CSS_SELECTOR, 'table.table-bordered'):
-            result_search = driver.find_element(By.XPATH,
-                            "//h1[contains(@class, 'clearfix')]//a[2]").text
-            results.append({"Code SMILES": code, "ID": sid, "Download files": result_search})
-            time.sleep(1)
-            download_btn = driver.find_element(By.CSS_SELECTOR, "a[href$='.zip']")
-            file_url = download_btn.get_attribute("href")
-            print("Download URL:", file_url)
-            filename = os.path.basename(file_url)
-            file_path = os.path.join(r'C:\Users\Hi\Downloads', filename)
-            response = requests.get(file_url, timeout=30)
-            if response.status_code == 200:
-                with open(file_path, "wb") as f:
-                    f.write(response.content)
-            print("Downloaded:", filename)
-            time.sleep(5)
-        elif driver.find_elements(By.XPATH, '/html/body/div/div/div/div'):
-            results.append({"Code SMILES": code, "Download files": 'Not found to download'})
-        driver.get('https://sea.bkslab.org/')
+        result_search = driver.find_element(By.XPATH,'//*[@id="output-res"]/textarea').text
+        print(result_search)
+        # Ghi vào excel
+        results.append({"ID": sid, "Code SMILES": result_search})
+        time.sleep(3)
 
 except TimeoutException:
     print("Timeout error!")
@@ -78,5 +57,5 @@ except Exception as e:
 finally:
     driver.quit()
 
-pd.DataFrame(results).to_excel("SEA_output.xlsx", index=False)
+pd.DataFrame(results).to_excel("NovoPro_output.xlsx", index=False)
 print("Finished saving datas in SEA_output.xlsx")
